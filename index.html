@@ -138,6 +138,8 @@ cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
   <div id="lbw"><div id="lb"></div></div>
 </div>
 
+<div id="transition" style="position:fixed;inset:0;background:#0a0a1a;z-index:500;pointer-events:none;opacity:0;transition:opacity 0.4s;"></div>
+
 <div id="title">
   <h1>DYSFUNCTIONAL<br>FAMILY</h1>
   <p class="sub">A side-scrolling adventure!<br>Stomp enemies! Collect coins!<br>Grab palm trees for power!</p>
@@ -179,6 +181,12 @@ cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
   <h2>GAME OVER</h2>
   <p>Your family was too much for you!</p>
   <button onclick="location.reload()">PLAY AGAIN</button>
+</div>
+
+<div id="pause" style="position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:200;color:#f5c842;text-align:center;">
+  <h2 style="font-size:clamp(14px,4vw,24px);text-shadow:0 0 24px #f5c842;letter-spacing:3px;">PAUSED</h2>
+  <button onclick="resumeGame()" style="font-family:monospace;background:#f5c842;color:#0a0a0f;border:none;padding:12px 30px;font-size:clamp(9px,2vw,12px);cursor:pointer;letter-spacing:2px;box-shadow:4px 4px 0 #7a4a00;">RESUME</button>
+  <button onclick="location.reload()" style="font-family:monospace;background:#cc3333;color:#fff;border:none;padding:12px 30px;font-size:clamp(9px,2vw,12px);cursor:pointer;letter-spacing:2px;box-shadow:4px 4px 0 #7a1a00;">QUIT</button>
 </div>
 
 <script>
@@ -301,6 +309,127 @@ const MAX_FALL  = 420;
 const PHYS_STEP = 1 / 30;
 
 // ═══════════════════════════════════════════════════
+//  WEB AUDIO API
+// ═══════════════════════════════════════════════════
+let audioCtx = null;
+let musicNodes = null;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function sfxJump() {
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(200, ctx.currentTime);
+  osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.1);
+  gain.gain.setValueAtTime(0.12, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.15);
+}
+
+function sfxStomp() {
+  const ctx = ensureAudio();
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc1.type = 'triangle';
+  osc1.frequency.setValueAtTime(80, ctx.currentTime);
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(800, ctx.currentTime);
+  osc2.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  osc1.connect(gain).connect(ctx.destination);
+  osc2.connect(gain).connect(ctx.destination);
+  osc1.start(); osc1.stop(ctx.currentTime + 0.12);
+  osc2.start(); osc2.stop(ctx.currentTime + 0.12);
+}
+
+function sfxCoin() {
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.linearRampToValueAtTime(1320, ctx.currentTime + 0.08);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.15);
+}
+
+function sfxDamage() {
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(120, ctx.currentTime);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.1);
+}
+
+function sfxPowerUp() {
+  const ctx = ensureAudio();
+  const notes = [440, 660, 880];
+  let currentTime = ctx.currentTime;
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, currentTime);
+    gain.gain.setValueAtTime(0.1, currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, currentTime + 0.12);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(currentTime); osc.stop(currentTime + 0.12);
+    currentTime += 0.1;
+  });
+}
+
+function sfxWin() {
+  const ctx = ensureAudio();
+  const notes = [523, 659, 784, 1047];
+  let currentTime = ctx.currentTime;
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, currentTime);
+    gain.gain.setValueAtTime(0.12, currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, currentTime + 0.18);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(currentTime); osc.stop(currentTime + 0.18);
+    currentTime += 0.15;
+  });
+}
+
+function bgMusic() {
+  const ctx = ensureAudio();
+  if (musicNodes) return;
+  musicNodes = [];
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc1.type = 'sine';
+  osc2.type = 'sine';
+  osc1.frequency.setValueAtTime(110, ctx.currentTime);
+  osc2.frequency.setValueAtTime(110.5, ctx.currentTime);
+  gain.gain.setValueAtTime(0.04, ctx.currentTime);
+  osc1.connect(gain).connect(ctx.destination);
+  osc2.connect(gain).connect(ctx.destination);
+  osc1.start();
+  osc2.start();
+  musicNodes = [osc1, osc2, gain];
+}
+
+// ═══════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════
 function darkenColor(hex, factor=0.7) {
@@ -340,6 +469,9 @@ let dustParticles = [];
 let scorePopups = [];
 let wasOnGround = false;
 let playerSquash = { sx:1, sy:1, targetSx:1, targetSy:1 };
+let paused = false;
+let celebrationParticles = [];
+let flagReached = false;
 
 function initState(){
   player = {
@@ -372,12 +504,20 @@ function initState(){
   scorePopups = [];
   wasOnGround = false;
   playerSquash = { sx:1, sy:1, targetSx:1, targetSy:1 };
+  celebrationParticles = [];
+  flagReached = false;
 
   // Create enemies from non-selected family members
   enemies = FAMILY.filter(f => f.name !== selectedChar.name).map(f => {
     let py = GROUND_Y;
+    let patrolLeft = f.x - 40;
+    let patrolRight = f.x + 40;
     PLATFORMS.forEach(p=>{
-      if(f.x>=p[0] && f.x<=p[0]+p[2] && p[1]<py) py=p[1];
+      if(f.x>=p[0] && f.x<=p[0]+p[2] && p[1]<py) {
+        py=p[1];
+        patrolLeft = p[0] + 10;
+        patrolRight = p[0] + p[2] - 10;
+      }
     });
     return {
       x:f.x, y:py, name:f.name, color:f.color,
@@ -387,6 +527,9 @@ function initState(){
       facing:1,
       insultTimer:Math.random()*2+2,
       insultCooldown:Math.random()*1.5+2.5,
+      patrolLeft:patrolLeft,
+      patrolRight:patrolRight,
+      patrolVx:30,
     };
   });
 
@@ -475,6 +618,7 @@ function update(dt, now){
   if (doJump && !wasJumpDown && player.onGround) {
     player.vy = JUMP_VEL;
     player.onGround = false;
+    sfxJump();
   }
   wasJumpDown = doJump;
 
@@ -521,11 +665,30 @@ function update(dt, now){
       c.collected = true; coinsCollected++;
       document.getElementById('hud-coins').textContent = 'COINS: ' + coinsCollected;
       spawnSparkles(c.x, c.y, 8, '#ffdd00');
+      sfxCoin();
       if (coinsCollected >= totalCoins) {
+        sfxWin();
         setTimeout(()=>{ document.getElementById('win').style.display='flex'; }, 1000);
       }
     }
   });
+
+  // Flag celebration
+  if (!flagReached && coinsCollected >= totalCoins && Math.abs(player.x + player.w/2 - FLAG.x) < 40 && Math.abs(player.y + player.h/2 - FLAG.y) < 40) {
+    flagReached = true;
+    sfxWin();
+    for (let i = 0; i < 32; i++) {
+      const angle = Math.random() * 6.28;
+      const speed = Math.random() * 180 + 80;
+      celebrationParticles.push({
+        x: FLAG.x, y: FLAG.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 100,
+        life: 1.5,
+        color: ['#ffdd00', '#ff6644', '#ff4444', '#ffaa00'][Math.floor(Math.random() * 4)],
+      });
+    }
+  }
 
   // Palm tree power-ups
   PALM_TREES.forEach(pt => {
@@ -534,13 +697,19 @@ function update(dt, now){
         player.powerUp = pt.type;
         player.powerUpTimer = pt.type === 'shield' ? 5 : pt.type === 'speed' ? 6 : 8;
         showMsg(pt.type.toUpperCase() + ' POWER UP!', 1500);
+        sfxPowerUp();
       }
     }
   });
 
   // Enemy AI
   enemies.forEach(e => {
-    e.facing = player.x + player.w/2 > e.x ? 1 : -1;
+    // Patrol movement
+    e.x += e.patrolVx * pdt;
+    if (e.x <= e.patrolLeft) { e.x = e.patrolLeft; e.patrolVx = Math.abs(e.patrolVx); }
+    if (e.x >= e.patrolRight) { e.x = e.patrolRight; e.patrolVx = -Math.abs(e.patrolVx); }
+
+    e.facing = e.patrolVx > 0 ? 1 : -1;
     e.insultTimer -= pdt;
 
     if (e.insultTimer <= 0) {
@@ -592,6 +761,7 @@ function update(dt, now){
       if (player.vy > 0 && pBottom >= eTop && pBottom <= eTop + 14) {
         // Successful stomp!
         stompCombo++;
+        sfxStomp();
         stompComboTimer = 1.5;
 
         // Bounce player upward (higher with combos)
@@ -656,6 +826,7 @@ function update(dt, now){
           pBottom > eTop + 8 && pTop < eBottom &&
           pRight > eLeft && pLeft < eRight) {
         player.hp--;
+        sfxDamage();
         player.invTimer = 1.5;
         // Knockback
         player.vx = (player.x < e.x) ? -120 : 120;
@@ -739,6 +910,15 @@ function update(dt, now){
     return sp.timer > 0;
   });
 
+  // Update celebration particles
+  celebrationParticles = celebrationParticles.filter(p => {
+    p.x += p.vx * pdt;
+    p.y += p.vy * pdt;
+    p.vy += 200 * pdt;
+    p.life -= pdt;
+    return p.life > 0;
+  });
+
   // Update projectiles
   projectiles = projectiles.filter(proj => {
     proj.x += proj.vx * pdt;
@@ -753,6 +933,7 @@ function update(dt, now){
       const dy = player.y + player.h/2 - proj.y;
       if (Math.hypot(dx, dy) < 12) {
         player.hp--;
+        sfxDamage();
         player.invTimer = 1.5;
         insultTexts.push({
           text: proj.insult,
@@ -1991,22 +2172,47 @@ function drawPlayer(now){
 function drawFlag(now){
   const fx=FLAG.x-camX, fy=FLAG.y;
   if(fx<-20||fx>VW+20) return;
+
+  // Pole
   ctx.fillStyle='#aaa';
   ctx.fillRect(fx-2,fy,4,GROUND_Y-fy);
+
+  // Waving flag with segments
   const wave=Math.sin(now*.008)*4;
+  const segmentCount = 5;
   ctx.fillStyle='#f5c842';
-  ctx.beginPath();
-  ctx.moveTo(fx+2,fy);
-  ctx.lineTo(fx+26,fy+10+wave);
-  ctx.lineTo(fx+2,fy+20);
-  ctx.closePath(); ctx.fill();
+  for (let i = 0; i < segmentCount; i++) {
+    const t = i / segmentCount;
+    const nextT = (i + 1) / segmentCount;
+    const y1 = fy + t * 20 + Math.sin(now * 0.008 + t * 2) * 2;
+    const y2 = fy + nextT * 20 + Math.sin(now * 0.008 + nextT * 2) * 2;
+    const x2 = fx + 2 + (26 * t) + wave * t;
+    const x3 = fx + 2 + (26 * nextT) + wave * nextT;
+    ctx.beginPath();
+    ctx.moveTo(fx+2, y1);
+    ctx.lineTo(x2, y1);
+    ctx.lineTo(x3, y2);
+    ctx.lineTo(fx+2, y2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   ctx.fillStyle='#aa7700';
   ctx.font='bold 8px monospace';
   ctx.textAlign='left';
   ctx.textBaseline='middle';
   ctx.fillText('★',fx+5,fy+10+wave/2);
+
+  // Base
   ctx.fillStyle='#888';
   ctx.fillRect(fx-6,GROUND_Y-4,16,8);
+
+  // Draw celebration particles
+  celebrationParticles.forEach(p => {
+    const alpha = p.life / 1.5;
+    ctx.fillStyle = `${p.color.slice(0, -1)},${alpha * 0.8})`;
+    ctx.fillRect(p.x - camX - 2, p.y - 2, 4, 4);
+  });
 }
 
 function drawInsultText(it, now) {
@@ -2224,6 +2430,7 @@ function draw(now){
 //  LOOP
 // ═══════════════════════════════════════════════════
 function loop(now){
+  if (paused) { requestAnimationFrame(loop); return; }
   const dt=Math.min((now-lastT)/1000,.05);
   lastT=now;
   update(dt,now);
@@ -2232,9 +2439,35 @@ function loop(now){
 }
 
 // ═══════════════════════════════════════════════════
+//  PAUSE FUNCTIONS
+// ═══════════════════════════════════════════════════
+function togglePause() {
+  if (document.getElementById('win').style.display === 'flex') return;
+  if (document.getElementById('gameover').style.display === 'flex') return;
+  paused = !paused;
+  document.getElementById('pause').style.display = paused ? 'flex' : 'none';
+  if (!paused) { lastT = performance.now(); }
+}
+
+function resumeGame() {
+  paused = false;
+  document.getElementById('pause').style.display = 'none';
+  lastT = performance.now();
+}
+
+function fadeTransition(callback) {
+  const el = document.getElementById('transition');
+  el.style.opacity = '1';
+  setTimeout(() => {
+    callback();
+    el.style.opacity = '0';
+  }, 400);
+}
+
+// ═══════════════════════════════════════════════════
 //  INPUT
 // ═══════════════════════════════════════════════════
-document.addEventListener('keydown',e=>{keys[e.key]=true; if(e.key===' ')e.preventDefault();});
+document.addEventListener('keydown',e=>{keys[e.key]=true; if(e.key===' ')e.preventDefault(); if(e.key==='Escape')togglePause();});
 document.addEventListener('keyup',  e=>{keys[e.key]=false;});
 
 function setupControls(){
@@ -2289,9 +2522,14 @@ function drawCharacterPreview(canvas, family) {
 }
 
 function goToCharSelect() {
-  document.getElementById('title').style.display = 'none';
-  document.getElementById('charselect').style.display = 'flex';
+  fadeTransition(() => {
+    document.getElementById('title').style.display = 'none';
+    document.getElementById('charselect').style.display = 'flex';
+    buildCharSelect();
+  });
+}
 
+function buildCharSelect() {
   const grid = document.getElementById('char-grid');
   grid.innerHTML = '';
 
@@ -2333,15 +2571,18 @@ function startGame(){
     return;
   }
 
-  document.getElementById('charselect').style.display='none';
-  document.getElementById('hud').style.display='flex';
-  document.getElementById('game-wrap').style.display='flex';
-  document.getElementById('controls').style.display='flex';
-  resizeCanvas();
-  initState();
-  lastT=performance.now();
-  showMsg('Jump on enemies to stomp them!\nCollect coins! Grab palm trees for power!',4500);
-  requestAnimationFrame(loop);
+  fadeTransition(() => {
+    document.getElementById('charselect').style.display='none';
+    document.getElementById('hud').style.display='flex';
+    document.getElementById('game-wrap').style.display='flex';
+    document.getElementById('controls').style.display='flex';
+    resizeCanvas();
+    initState();
+    lastT=performance.now();
+    showMsg('Jump on enemies to stomp them!\nCollect coins! Grab palm trees for power!',4500);
+    bgMusic();
+    requestAnimationFrame(loop);
+  });
 }
 
 // ═══════════════════════════════════════════════════
