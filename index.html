@@ -140,7 +140,7 @@ cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
 
 <div id="title">
   <h1>DYSFUNCTIONAL<br>FAMILY</h1>
-  <p class="sub">A side-scrolling adventure!<br>Dodge the insults! Collect coins!<br>Grab palm trees for power!</p>
+  <p class="sub">A side-scrolling adventure!<br>Stomp enemies! Collect coins!<br>Grab palm trees for power!</p>
   <button onclick="goToCharSelect()">PLAY</button>
 </div>
 
@@ -332,6 +332,14 @@ let keys={}, mctrl={left:false,right:false,jump:false};
 let wasJumpDown=false;
 let lastT=0;
 let bgStars=[];
+let screenShake = { x:0, y:0, intensity:0, timer:0 };
+let stompCombo = 0;
+let stompComboTimer = 0;
+let deathAnims = [];
+let dustParticles = [];
+let scorePopups = [];
+let wasOnGround = false;
+let playerSquash = { sx:1, sy:1, targetSx:1, targetSy:1 };
 
 function initState(){
   player = {
@@ -356,6 +364,14 @@ function initState(){
   sparkles = [];
   projectiles = [];
   insultTexts = [];
+  screenShake = { x:0, y:0, intensity:0, timer:0 };
+  stompCombo = 0;
+  stompComboTimer = 0;
+  deathAnims = [];
+  dustParticles = [];
+  scorePopups = [];
+  wasOnGround = false;
+  playerSquash = { sx:1, sy:1, targetSx:1, targetSy:1 };
 
   // Create enemies from non-selected family members
   enemies = FAMILY.filter(f => f.name !== selectedChar.name).map(f => {
@@ -400,9 +416,11 @@ function resolvePlatforms(dt){
     const pl = player;
     const pr = pl.x + pl.w;
     const pb = pl.y + pl.h;
+    const isOneWay = (ph !== 32); // Thin platforms are one-way
 
     if (pr <= px || pl.x >= px + pw) return;
 
+    // Landing on top (all platforms)
     if (pl.vy >= 0) {
       const prevBottom = pb - pl.vy * dt;
       if (prevBottom <= py && pb >= py) {
@@ -412,7 +430,8 @@ function resolvePlatforms(dt){
       }
     }
 
-    if (pl.vy < 0) {
+    // Head bonk from below (solid platforms only)
+    if (!isOneWay && pl.vy < 0) {
       const prevTop = pl.y - pl.vy * dt;
       if (prevTop >= py + ph && pl.y <= py + ph) {
         pl.vy = 0;
@@ -420,7 +439,8 @@ function resolvePlatforms(dt){
       }
     }
 
-    if (ph === 32) {
+    // Side collision (solid platforms only)
+    if (!isOneWay) {
       if (pb > py + 4 && pl.y < py + ph) {
         if (pl.vx > 0 && pr > px   && pl.x < px)      { pl.x = px - pl.w; pl.vx = 0; }
         if (pl.vx < 0 && pl.x < px + pw && pr > px+pw){ pl.x = px + pw;   pl.vx = 0; }
@@ -548,6 +568,177 @@ function update(dt, now){
     }
   });
 
+  // Stomp combo timer
+  stompComboTimer -= pdt;
+  if (stompComboTimer <= 0) stompCombo = 0;
+
+  // Stomp-to-kill: check if player is falling onto enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const ePw = e.w, ePh = e.h;
+    const eLeft = e.x - ePw/2;
+    const eRight = e.x + ePw/2;
+    const eTop = e.y - ePh;
+    const eBottom = e.y;
+
+    const pLeft = player.x;
+    const pRight = player.x + player.w;
+    const pBottom = player.y + player.h;
+    const pTop = player.y;
+
+    // Check horizontal overlap
+    if (pRight > eLeft + 2 && pLeft < eRight - 2) {
+      // Stomp: player falling, feet near enemy head
+      if (player.vy > 0 && pBottom >= eTop && pBottom <= eTop + 14) {
+        // Successful stomp!
+        stompCombo++;
+        stompComboTimer = 1.5;
+
+        // Bounce player upward (higher with combos)
+        const bounceBoost = Math.min(stompCombo * 20, 80);
+        player.vy = JUMP_VEL * 0.65 - bounceBoost;
+        player.onGround = false;
+
+        // Squash effect on player
+        playerSquash.sx = 1.4;
+        playerSquash.sy = 0.6;
+
+        // Spawn death animation
+        deathAnims.push({
+          x: e.x, y: eTop, w: ePw, h: ePh,
+          name: e.name, color: e.color, skin: e.skin, hair: e.hair, cls: e.cls,
+          squish: 1.0, // 1.0 = normal, animates to 0
+          timer: 0.4,
+          phase: 'squish',
+        });
+
+        // Score popup
+        const pts = stompCombo * 100;
+        scorePopups.push({
+          x: e.x, y: eTop - 5,
+          text: stompCombo > 1 ? `${pts} x${stompCombo}!` : `${pts}`,
+          timer: 1.2,
+          color: stompCombo > 2 ? '#ff4444' : stompCombo > 1 ? '#ffaa00' : '#ffdd00',
+          scale: 1 + stompCombo * 0.15,
+        });
+
+        // Big particle burst
+        const burstColors = ['#ffdd00','#ff6644','#ff4444','#ffaa00', e.color];
+        for (let j = 0; j < 16 + stompCombo * 4; j++) {
+          const angle = Math.random() * 6.28;
+          const speed = Math.random() * 120 + 50;
+          sparkles.push({
+            x: e.x, y: eTop + ePh/2,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 60,
+            life: 0.6 + Math.random() * 0.4,
+            color: burstColors[Math.floor(Math.random() * burstColors.length)],
+          });
+        }
+
+        // Screen shake
+        screenShake.intensity = 3 + stompCombo;
+        screenShake.timer = 0.2;
+
+        // Remove enemy
+        enemies.splice(i, 1);
+
+        // Show combo message
+        if (stompCombo >= 3) {
+          showMsg('STOMP COMBO x' + stompCombo + '!', 1200);
+        }
+
+        continue;
+      }
+
+      // Side/bottom collision with enemy (damage player)
+      if (!player.invTimer && !(player.powerUp === 'shield') &&
+          pBottom > eTop + 8 && pTop < eBottom &&
+          pRight > eLeft && pLeft < eRight) {
+        player.hp--;
+        player.invTimer = 1.5;
+        // Knockback
+        player.vx = (player.x < e.x) ? -120 : 120;
+        player.vy = -180;
+        screenShake.intensity = 6;
+        screenShake.timer = 0.3;
+        playerSquash.sx = 0.6;
+        playerSquash.sy = 1.4;
+        spawnSparkles(player.x + player.w/2, player.y + player.h/2, 12, '#ff3333');
+        if (player.hp <= 0) {
+          document.getElementById('gameover').style.display='flex';
+        }
+        updateHPDisplay();
+      }
+    }
+  }
+
+  // Landing dust particles
+  if (player.onGround && !wasOnGround) {
+    // Just landed
+    playerSquash.sx = 1.35;
+    playerSquash.sy = 0.65;
+    for (let i = 0; i < 6; i++) {
+      const side = i < 3 ? -1 : 1;
+      dustParticles.push({
+        x: player.x + player.w/2 + side * (Math.random() * 8 + 2),
+        y: player.y + player.h,
+        vx: side * (Math.random() * 40 + 20),
+        vy: -Math.random() * 20 - 5,
+        life: 0.35,
+        size: Math.random() * 2.5 + 1,
+      });
+    }
+  }
+  wasOnGround = player.onGround;
+
+  // Jump stretch
+  if (keys[' '] || keys['ArrowUp'] || keys['w'] || mctrl.jump) {
+    if (player.vy < -100) {
+      playerSquash.sx = 0.8;
+      playerSquash.sy = 1.25;
+    }
+  }
+
+  // Squash/stretch interpolation
+  playerSquash.sx += (1 - playerSquash.sx) * Math.min(pdt * 12, 1);
+  playerSquash.sy += (1 - playerSquash.sy) * Math.min(pdt * 12, 1);
+
+  // Screen shake update
+  if (screenShake.timer > 0) {
+    screenShake.timer -= pdt;
+    const t = screenShake.timer > 0 ? screenShake.intensity : 0;
+    screenShake.x = (Math.random() - 0.5) * t * 2;
+    screenShake.y = (Math.random() - 0.5) * t * 2;
+  } else {
+    screenShake.x = 0;
+    screenShake.y = 0;
+  }
+
+  // Update death animations
+  deathAnims = deathAnims.filter(da => {
+    da.timer -= pdt;
+    if (da.phase === 'squish') {
+      da.squish = Math.max(0, da.timer / 0.4);
+    }
+    return da.timer > 0;
+  });
+
+  // Update dust particles
+  dustParticles = dustParticles.filter(d => {
+    d.x += d.vx * pdt;
+    d.y += d.vy * pdt;
+    d.life -= pdt;
+    return d.life > 0;
+  });
+
+  // Update score popups
+  scorePopups = scorePopups.filter(sp => {
+    sp.y -= 30 * pdt;
+    sp.timer -= pdt;
+    return sp.timer > 0;
+  });
+
   // Update projectiles
   projectiles = projectiles.filter(proj => {
     proj.x += proj.vx * pdt;
@@ -624,7 +815,7 @@ function showInsultAboveEnemy(enemy, text) {
   insultTexts.push({
     text: text,
     x: enemy.x,
-    y: enemy.y - 10,
+    y: enemy.y - 28,
     timer: 2,
     isFromEnemy: true,
   });
@@ -840,10 +1031,20 @@ function drawPalmTree(pt, now) {
 }
 
 function drawSparkle(s) {
-  ctx.fillStyle = s.color + Math.floor(s.life * 200).toString(16).padStart(2, '0');
+  const alpha = Math.max(0, Math.min(1, s.life * 1.6));
+  const size = 1.2 + s.life * 1.5;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = s.color;
   ctx.beginPath();
-  ctx.arc(s.x - camX, s.y, 1.5, 0, 6.28);
+  ctx.arc(s.x - camX, s.y, size, 0, 6.28);
   ctx.fill();
+  // Inner bright core
+  ctx.fillStyle = '#fff';
+  ctx.globalAlpha = alpha * 0.5;
+  ctx.beginPath();
+  ctx.arc(s.x - camX, s.y, size * 0.4, 0, 6.28);
+  ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 function drawProjectile(proj, now) {
@@ -1691,46 +1892,6 @@ function drawEnemy(enemy, now){
     powerUp: null
   });
 
-  // === GUN ===
-  const gunDir = isRight ? 1 : -1;
-  const gunX = isRight ? sx+pw*0.5 : sx-pw*0.5-10;
-  const gunY = ty+ph*.38+b;
-  // Gun body
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(gunX, gunY, 10*gunDir, 4);
-  // Barrel
-  ctx.fillStyle = '#444';
-  ctx.fillRect(gunX + 8*gunDir, gunY+0.5, 6*gunDir, 3);
-  // Barrel highlight
-  ctx.fillStyle = 'rgba(255,255,255,.15)';
-  ctx.fillRect(gunX + 8*gunDir, gunY+0.5, 6*gunDir, 1);
-  // Handle/grip
-  ctx.fillStyle = '#5a3a1a';
-  ctx.fillRect(gunX + 2*gunDir, gunY+3, 4*gunDir, 5);
-  // Trigger guard
-  ctx.fillStyle = '#333';
-  ctx.fillRect(gunX + 3*gunDir, gunY+3, 2*gunDir, 2);
-
-  // Muzzle flash (when recently fired — insultTimer just reset)
-  if(enemy.insultTimer > enemy.insultCooldown - 0.15){
-    const mfx = gunX + 14*gunDir;
-    const mfy = gunY + 2;
-    ctx.fillStyle = 'rgba(255,200,50,.8)';
-    ctx.beginPath(); ctx.arc(mfx, mfy, 4, 0, 6.28); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,200,.6)';
-    ctx.beginPath(); ctx.arc(mfx, mfy, 2, 0, 6.28); ctx.fill();
-    // Flash lines
-    ctx.strokeStyle = 'rgba(255,180,50,.5)';
-    ctx.lineWidth = 0.8;
-    for(let fi=0;fi<4;fi++){
-      const fa = fi*1.57+now*.02;
-      ctx.beginPath();
-      ctx.moveTo(mfx+Math.cos(fa)*3, mfy+Math.sin(fa)*3);
-      ctx.lineTo(mfx+Math.cos(fa)*7, mfy+Math.sin(fa)*7);
-      ctx.stroke();
-    }
-  }
-
   ctx.font='bold 6px monospace';
   ctx.textAlign='center';
   ctx.textBaseline='bottom';
@@ -1771,6 +1932,30 @@ function drawPlayer(now){
     ctx.stroke();
   }
 
+  // Apply squash/stretch
+  ctx.save();
+  const sqCx = sx + pw/2;
+  const sqCy = y + ph;
+  ctx.translate(sqCx, sqCy);
+  ctx.scale(playerSquash.sx, playerSquash.sy);
+  ctx.translate(-sqCx, -sqCy);
+
+  // Speed trail effect
+  if (p.powerUp === 'speed' && Math.abs(p.vx) > 80) {
+    const dir = p.vx > 0 ? -1 : 1;
+    for (let i = 1; i <= 3; i++) {
+      ctx.globalAlpha = 0.15 / i;
+      const trailData = {
+        name: p.charName, color: p.charColor,
+        skin: p.charSkin, hair: p.charHair, cls: p.charCls
+      };
+      drawCharSprite(ctx, sx - pw/2 + dir * i * 8, y, pw, ph, trailData, now, {
+        facing: isRight ? 1 : -1, bob: b, isEnemy: false, invTimer: 0, powerUp: null
+      });
+    }
+    ctx.globalAlpha = isInvincible && !flashOn ? 0.5 : 1;
+  }
+
   // Draw character sprite using shared function
   const charData = {
     name: p.charName,
@@ -1792,6 +1977,7 @@ function drawPlayer(now){
   });
 
   ctx.globalAlpha = 1;
+  ctx.restore(); // end squash/stretch
 
   ctx.font='bold 6px monospace';
   ctx.textAlign='center';
@@ -1829,22 +2015,148 @@ function drawInsultText(it, now) {
   const ty = it.y;
 
   const alpha = it.timer < 0.3 ? it.timer / 0.3 : 1;
+  ctx.save();
   ctx.globalAlpha = alpha;
 
-  ctx.font = 'bold 6px monospace';
+  const fontSize = it.isFromEnemy ? 8 : 7;
+  ctx.font = `bold ${fontSize}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = it.isFromEnemy ? '#ffaa88' : '#ffffff';
 
-  const lines = it.text.split('\n');
-  lines.forEach((line, i) => {
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.strokeText(line, tx, ty + i * 10);
-    ctx.fillText(line, tx, ty + i * 10);
+  // Measure text for bubble sizing
+  const textWidth = ctx.measureText(it.text).width;
+  const padX = 8, padY = 6;
+  const bubbleW = textWidth + padX * 2;
+  const bubbleH = fontSize + padY * 2;
+  const bubbleX = tx - bubbleW / 2;
+  const bubbleY = ty - bubbleH / 2;
+  const tailSize = 5;
+  const cornerR = 5;
+
+  if (it.isFromEnemy) {
+    // White speech bubble with rounded corners
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+
+    // Rounded rectangle
+    ctx.beginPath();
+    ctx.moveTo(bubbleX + cornerR, bubbleY);
+    ctx.lineTo(bubbleX + bubbleW - cornerR, bubbleY);
+    ctx.arcTo(bubbleX + bubbleW, bubbleY, bubbleX + bubbleW, bubbleY + cornerR, cornerR);
+    ctx.lineTo(bubbleX + bubbleW, bubbleY + bubbleH - cornerR);
+    ctx.arcTo(bubbleX + bubbleW, bubbleY + bubbleH, bubbleX + bubbleW - cornerR, bubbleY + bubbleH, cornerR);
+    ctx.lineTo(bubbleX + bubbleW / 2 + tailSize, bubbleY + bubbleH);
+    // Tail pointing down toward NPC
+    ctx.lineTo(bubbleX + bubbleW / 2, bubbleY + bubbleH + tailSize);
+    ctx.lineTo(bubbleX + bubbleW / 2 - tailSize, bubbleY + bubbleH);
+    ctx.lineTo(bubbleX + cornerR, bubbleY + bubbleH);
+    ctx.arcTo(bubbleX, bubbleY + bubbleH, bubbleX, bubbleY + bubbleH - cornerR, cornerR);
+    ctx.lineTo(bubbleX, bubbleY + cornerR);
+    ctx.arcTo(bubbleX, bubbleY, bubbleX + cornerR, bubbleY, cornerR);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Text inside bubble (dark)
+    ctx.fillStyle = '#222';
+    ctx.fillText(it.text, tx, ty);
+  } else {
+    // Player hit text — floating red text with outline
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(it.text, tx, ty);
+    ctx.fillStyle = '#ff4444';
+    ctx.fillText(it.text, tx, ty);
+  }
+
+  ctx.restore();
+}
+
+function drawDustParticle(d) {
+  const dx = d.x - camX;
+  const alpha = d.life / 0.35;
+  ctx.fillStyle = `rgba(180,160,120,${alpha * 0.6})`;
+  ctx.beginPath();
+  ctx.arc(dx, d.y, d.size * alpha, 0, 6.28);
+  ctx.fill();
+}
+
+function drawDeathAnim(da, now) {
+  const dx = da.x - camX;
+  if (dx < -40 || dx > VW + 40) return;
+
+  const squish = da.squish;
+  if (squish <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = squish;
+  ctx.translate(dx, da.y + da.h * (1 - squish));
+  ctx.scale(1 + (1 - squish) * 0.8, squish);
+
+  // Draw the squishing character
+  const charData = { name: da.name, color: da.color, skin: da.skin, hair: da.hair, cls: da.cls };
+  drawCharSprite(ctx, -da.w/2, 0, da.w, da.h, charData, now, {
+    facing: 1, bob: 0, isEnemy: true, invTimer: 0, powerUp: null
   });
 
-  ctx.globalAlpha = 1;
+  // Dizzy stars
+  ctx.fillStyle = '#ffdd00';
+  const starPhase = now * 0.01;
+  for (let i = 0; i < 3; i++) {
+    const sx = Math.cos(starPhase + i * 2.09) * 12;
+    const sy = Math.sin(starPhase + i * 2.09) * 5 - 8;
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('★', sx, sy);
+  }
+
+  ctx.restore();
+}
+
+function drawScorePopup(sp) {
+  const sx = sp.x - camX;
+  const alpha = Math.min(sp.timer / 0.3, 1);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `bold ${Math.floor(8 * sp.scale)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,.7)';
+  ctx.fillText(sp.text, sx + 1, sp.y + 1);
+
+  // Main text
+  ctx.fillStyle = sp.color;
+  ctx.fillText(sp.text, sx, sp.y);
+
+  ctx.restore();
+}
+
+function drawStompCombo(now) {
+  if (stompCombo < 2 || stompComboTimer <= 0) return;
+  const alpha = Math.min(stompComboTimer, 1);
+  const pulse = (Math.sin(now * 0.015) + 1) / 2;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `bold ${12 + Math.floor(pulse * 3)}px monospace`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+
+  // Background
+  const text = `COMBO x${stompCombo}`;
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.fillRect(VW - tw - 14, 8, tw + 10, 20);
+
+  // Text
+  ctx.fillStyle = stompCombo >= 4 ? '#ff3333' : stompCombo >= 3 ? '#ff8800' : '#ffdd00';
+  ctx.fillText(text, VW - 8, 11);
+
+  ctx.restore();
 }
 
 function drawMsg(now){
@@ -1876,17 +2188,30 @@ function showMsg(t,ms){
 // ═══════════════════════════════════════════════════
 function draw(now){
   ctx.clearRect(0,0,VW,VH);
+
+  // Apply screen shake
+  ctx.save();
+  ctx.translate(screenShake.x, screenShake.y);
+
   drawBG(now);
   PLATFORMS.forEach(p=>drawPlatform(p));
   coins.forEach(c=>drawCoin(c,now));
   PALM_TREES.forEach(pt => drawPalmTree(pt, now));
+  dustParticles.forEach(d => drawDustParticle(d));
   sparkles.forEach(s => drawSparkle(s));
   drawFlag(now);
+  deathAnims.forEach(da => drawDeathAnim(da, now));
   enemies.forEach(e=>drawEnemy(e,now));
   projectiles.forEach(proj => drawProjectile(proj, now));
   drawPlayer(now);
+  scorePopups.forEach(sp => drawScorePopup(sp));
   insultTexts.forEach(it => drawInsultText(it, now));
   drawMsg(now);
+
+  ctx.restore(); // end screen shake
+
+  // HUD elements drawn outside screen shake
+  drawStompCombo(now);
 
   const prog=Math.min((player.x+player.w)/LEVEL_W,1);
   ctx.fillStyle='rgba(0,0,0,.5)';
@@ -2015,7 +2340,7 @@ function startGame(){
   resizeCanvas();
   initState();
   lastT=performance.now();
-  showMsg('Dodge the insults!\nCollect coins! Grab palm trees for power!',4500);
+  showMsg('Jump on enemies to stomp them!\nCollect coins! Grab palm trees for power!',4500);
   requestAnimationFrame(loop);
 }
 
