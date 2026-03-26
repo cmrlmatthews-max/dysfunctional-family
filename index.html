@@ -17,56 +17,8 @@ gap:16px; z-index:999; color:#f5c842;
 #lb  { height:100%; width:0%; background:#f5c842; transition:width .3s; }
 #loading p { font-size:11px; letter-spacing:2px; }
 
-#title {
-position:fixed; inset:0; background:#0a0a1a;
-display:none; flex-direction:column; align-items:center; justify-content:center;
-gap:20px; z-index:90;
-}
-#title h1 {
-color:#f5c842; font-size:clamp(28px,8vw,52px); text-align:center;
-text-shadow:4px 4px 0 #5a3a00, 0 0 30px #f5c84255;
-line-height:1.7; letter-spacing:3px;
-}
-#title .sub { color:#ccc; font-size:clamp(8px,2vw,11px); text-align:center; line-height:2.2; max-width:320px; }
-#title button {
-font-family:monospace; background:#f5c842; color:#0a0a0f;
-border:none; padding:14px 34px; font-size:clamp(10px,2.5vw,14px);
-cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
-}
-#title button:active { transform:translate(2px,2px); box-shadow:2px 2px 0 #7a4a00; }
-
-#charselect {
-position:fixed; inset:0; background:#0a0a1a;
-display:none; flex-direction:column; align-items:center; justify-content:center;
-gap:20px; z-index:90;
-overflow-y:auto;
-}
-#charselect h2 {
-color:#f5c842; font-size:clamp(18px,5vw,28px);
-text-shadow:4px 4px 0 #5a3a00;
-letter-spacing:2px;
-}
-.char-grid {
-display:grid; grid-template-columns:repeat(4,1fr);
-gap:12px; padding:20px; max-width:600px;
-}
-.char-card {
-display:flex; flex-direction:column; align-items:center; gap:8px;
-padding:12px; border:2px solid #888;
-background:rgba(100,100,100,.2); cursor:pointer;
-transition:all .2s; border-radius:4px;
-}
-.char-card:hover { border-color:#f5c842; background:rgba(100,100,100,.3); }
-.char-card.selected { border-color:#ffdd00; border-width:4px; background:rgba(255,221,0,.3); }
-.char-canvas { border:1px solid #555; background:#1a1a2a; }
-.char-name { color:#f5c842; font-size:10px; letter-spacing:1px; }
-#charselect .go-btn {
-font-family:monospace; background:#f5c842; color:#0a0a0f;
-border:none; padding:14px 34px; font-size:clamp(10px,2.5vw,14px);
-cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
-margin-top:10px;
-}
-#charselect .go-btn:active { transform:translate(2px,2px); box-shadow:2px 2px 0 #7a4a00; }
+#title, #charselect { position:fixed; inset:0; display:none; z-index:90; }
+#title canvas, #charselect canvas { width:100%; height:100%; image-rendering:pixelated; }
 
 #hud {
 position:fixed; top:0; left:0; right:0; display:none;
@@ -140,16 +92,12 @@ cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
 
 <div id="transition" style="position:fixed;inset:0;background:#0a0a1a;z-index:500;pointer-events:none;opacity:0;transition:opacity 0.4s;"></div>
 
-<div id="title">
-  <h1>DYSFUNCTIONAL<br>FAMILY</h1>
-  <p class="sub">A side-scrolling adventure!<br>Stomp enemies! Collect coins!<br>Grab palm trees for power!</p>
-  <button onclick="goToCharSelect()">PLAY</button>
+<div id="title" style="position:fixed;inset:0;display:none;z-index:90;">
+  <canvas id="title-canvas" style="width:100%;height:100%;"></canvas>
 </div>
 
-<div id="charselect">
-  <h2>SELECT YOUR CHARACTER</h2>
-  <div class="char-grid" id="char-grid"></div>
-  <button class="go-btn" onclick="startGame()">LET'S GO!</button>
+<div id="charselect" style="position:fixed;inset:0;display:none;z-index:90;">
+  <canvas id="charselect-canvas" style="width:100%;height:100%;"></canvas>
 </div>
 
 <div id="hud">
@@ -298,6 +246,26 @@ const PALM_TREES = [
   { x:1800, type:'shield' },
   { x:2400, type:'speed' },
 ];
+
+// ═══════════════════════════════════════════════════
+//  WATER & LAVA HAZARDS
+// ═══════════════════════════════════════════════════
+// Gaps between ground platforms: fill with water or lava
+// Water: safe to fall into (bounces player out), cosmetic
+// Lava: damages player on contact
+const WATER_POOLS = [
+  { x:320, w:60, y:VH, depth:32 },   // gap between plat 0-1
+  { x:660, w:60, y:VH, depth:32 },   // gap between plat 1-2
+  { x:1680, w:80, y:VH, depth:32 },  // gap between plat 5-6
+];
+const LAVA_POOLS = [
+  { x:970, w:70, y:VH, depth:32 },   // gap between plat 2-3
+  { x:1340, w:80, y:VH, depth:32 },  // gap between plat 3-4
+  { x:2060, w:80, y:VH, depth:32 },  // gap between plat 5-6
+];
+let waterSplashes = [];
+let lavaBubbles = [];
+let heatShimmers = [];
 
 // ═══════════════════════════════════════════════════
 //  PHYSICS CONSTANTS
@@ -506,6 +474,9 @@ function initState(){
   playerSquash = { sx:1, sy:1, targetSx:1, targetSy:1 };
   celebrationParticles = [];
   flagReached = false;
+  waterSplashes = [];
+  lavaBubbles = [];
+  heatShimmers = [];
 
   // Create enemies from non-selected family members
   enemies = FAMILY.filter(f => f.name !== selectedChar.name).map(f => {
@@ -970,6 +941,103 @@ function update(dt, now){
 
   // Invincibility
   player.invTimer -= pdt;
+
+  // ── Water pool interaction ──
+  const pCx = player.x + player.w / 2;
+  const pBot = player.y + player.h;
+  const waterSurface = VH - 32; // top of the pool = GROUND_Y
+  WATER_POOLS.forEach(wp => {
+    if (pCx > wp.x && pCx < wp.x + wp.w && pBot > waterSurface + 4) {
+      // Player touched water — bounce them out with splash
+      if (player.vy > 50) {
+        // Spawn splash particles
+        for (let i = 0; i < 10; i++) {
+          waterSplashes.push({
+            x: pCx + (Math.random() - 0.5) * wp.w * 0.6,
+            y: waterSurface,
+            vx: (Math.random() - 0.5) * 80,
+            vy: -Math.random() * 100 - 40,
+            size: Math.random() * 2.5 + 1,
+            life: 0.5 + Math.random() * 0.3,
+            maxLife: 0.8,
+          });
+        }
+        if (typeof sfxJump === 'function') sfxJump();
+      }
+      // Bounce player out
+      player.vy = JUMP_VEL * 0.7;
+      player.y = waterSurface - player.h;
+    }
+  });
+
+  // ── Lava pool interaction (DAMAGE) ──
+  const lavaSurface = VH - 32; // top of lava = GROUND_Y
+  LAVA_POOLS.forEach(lp => {
+    if (pCx > lp.x && pCx < lp.x + lp.w && pBot > lavaSurface + 4) {
+      if (!player.invTimer || player.invTimer <= 0) {
+        if (!(player.powerUp === 'shield')) {
+          player.hp--;
+          player.invTimer = 1.5;
+          screenShake.intensity = 8;
+          screenShake.timer = 0.35;
+          playerSquash.sx = 0.6;
+          playerSquash.sy = 1.4;
+          spawnSparkles(pCx, pBot, 14, '#ff4400');
+          if (typeof sfxDamage === 'function') sfxDamage();
+          if (player.hp <= 0) {
+            document.getElementById('gameover').style.display = 'flex';
+          }
+          updateHPDisplay();
+        }
+      }
+      // Bounce player out of lava regardless
+      player.vy = JUMP_VEL * 0.8;
+      player.y = lavaSurface - player.h;
+    }
+  });
+
+  // ── Lava bubbles & heat shimmers ──
+  LAVA_POOLS.forEach(lp => {
+    const lpTop = lp.y - lp.depth; // GROUND_Y level
+    // Random bubbles rising from within the lava
+    if (Math.random() < pdt * 3) {
+      lavaBubbles.push({
+        x: lp.x + Math.random() * lp.w,
+        y: lpTop + Math.random() * lp.depth * 0.7 + lp.depth * 0.2,
+        vy: -15 - Math.random() * 25,
+        size: Math.random() * 2 + 1.5,
+        life: 0.6 + Math.random() * 0.4,
+      });
+    }
+    // Heat shimmer particles rising above the surface
+    if (Math.random() < pdt * 2) {
+      heatShimmers.push({
+        x: lp.x + Math.random() * lp.w,
+        y: lpTop - Math.random() * 5,
+        vy: -10 - Math.random() * 15,
+        size: Math.random() * 3 + 2,
+        life: 1.0,
+      });
+    }
+  });
+  lavaBubbles = lavaBubbles.filter(b => {
+    b.y += b.vy * pdt;
+    b.life -= pdt;
+    return b.life > 0;
+  });
+  heatShimmers = heatShimmers.filter(s => {
+    s.y += s.vy * pdt;
+    s.x += Math.sin(s.life * 8 + s.x) * 0.3;
+    s.life -= pdt;
+    return s.life > 0;
+  });
+  waterSplashes = waterSplashes.filter(sp => {
+    sp.x += sp.vx * pdt;
+    sp.y += sp.vy * pdt;
+    sp.vy += 180 * pdt;
+    sp.life -= pdt;
+    return sp.life > 0;
+  });
 
   if (player.y > VH + 80) {
     player.x = Math.max(0, camX+40); player.y = GROUND_Y-50;
@@ -2365,6 +2433,143 @@ function drawStompCombo(now) {
   ctx.restore();
 }
 
+// ═══════════════════════════════════════════════════
+//  WATER DRAWING
+// ═══════════════════════════════════════════════════
+function drawWaterPool(pool, now) {
+  const rx = pool.x - camX;
+  if (rx + pool.w < 0 || rx > VW) return;
+  const topY = pool.y - pool.depth; // top surface = GROUND_Y level
+  const botY = pool.y;              // bottom = VH
+
+  // Dark water body fills the gap
+  const waterGrad = ctx.createLinearGradient(0, topY, 0, botY);
+  waterGrad.addColorStop(0, 'rgba(20,60,120,0.7)');
+  waterGrad.addColorStop(0.5, 'rgba(15,45,100,0.85)');
+  waterGrad.addColorStop(1, 'rgba(10,25,60,0.95)');
+  ctx.fillStyle = waterGrad;
+  ctx.fillRect(rx, topY, pool.w, pool.depth);
+
+  // Animated wave surface at the top
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(rx, topY + 10);
+  for (let wx = 0; wx <= pool.w; wx += 2) {
+    const waveH = Math.sin(now * 0.004 + (pool.x + wx) * 0.08) * 2.5
+                + Math.sin(now * 0.007 + (pool.x + wx) * 0.12) * 1.5;
+    ctx.lineTo(rx + wx, topY + waveH);
+  }
+  ctx.lineTo(rx + pool.w, topY + 10);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(30,100,200,0.5)';
+  ctx.fill();
+
+  // Surface highlight shimmer
+  for (let wx = 4; wx < pool.w - 4; wx += 12) {
+    const waveH = Math.sin(now * 0.004 + (pool.x + wx) * 0.08) * 2.5;
+    const shimmer = (Math.sin(now * 0.006 + wx * 0.3) + 1) / 2;
+    ctx.fillStyle = `rgba(120,180,255,${0.3 + shimmer * 0.4})`;
+    ctx.fillRect(rx + wx, topY + waveH - 1, 6, 1.5);
+  }
+
+  // Subtle foam at edges where water meets land
+  ctx.fillStyle = 'rgba(180,220,255,0.35)';
+  const foamL = Math.sin(now * 0.005) * 1.5;
+  ctx.fillRect(rx, topY + foamL, 3, 5);
+  ctx.fillRect(rx + pool.w - 3, topY + foamL, 3, 5);
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════
+//  LAVA DRAWING
+// ═══════════════════════════════════════════════════
+function drawLavaPool(pool, now) {
+  const rx = pool.x - camX;
+  if (rx + pool.w < 0 || rx > VW) return;
+  const topY = pool.y - pool.depth; // top surface = GROUND_Y level
+  const botY = pool.y;              // bottom = VH
+
+  // Lava body with glowing gradient fills the gap
+  const lavaGrad = ctx.createLinearGradient(0, topY, 0, botY);
+  lavaGrad.addColorStop(0, 'rgba(255,120,20,0.9)');
+  lavaGrad.addColorStop(0.4, 'rgba(220,60,10,0.95)');
+  lavaGrad.addColorStop(0.8, 'rgba(180,30,5,0.95)');
+  lavaGrad.addColorStop(1, 'rgba(120,15,0,1)');
+  ctx.fillStyle = lavaGrad;
+  ctx.fillRect(rx, topY, pool.w, pool.depth);
+
+  // Slow-moving lava surface waves at the top
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(rx, topY + 10);
+  for (let lx = 0; lx <= pool.w; lx += 2) {
+    const waveH = Math.sin(now * 0.002 + (pool.x + lx) * 0.06) * 3
+                + Math.sin(now * 0.003 + (pool.x + lx) * 0.1) * 1.5;
+    ctx.lineTo(rx + lx, topY + waveH);
+  }
+  ctx.lineTo(rx + pool.w, topY + 10);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,160,40,0.6)';
+  ctx.fill();
+
+  // Bright hotspots (moving) in the middle of the pool
+  for (let lx = 6; lx < pool.w - 6; lx += 14) {
+    const phase = now * 0.001 + lx * 0.2;
+    const brightness = (Math.sin(phase) + 1) / 2;
+    const waveH = Math.sin(now * 0.002 + (pool.x + lx) * 0.06) * 3;
+    ctx.fillStyle = `rgba(255,220,80,${0.2 + brightness * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(rx + lx, topY + pool.depth/2 + waveH, 3 + brightness * 2, 0, 6.28);
+    ctx.fill();
+  }
+
+  // Glow above lava (heat haze) rising above the surface
+  const glowGrad = ctx.createLinearGradient(0, topY - 20, 0, topY);
+  glowGrad.addColorStop(0, 'rgba(255,80,0,0)');
+  glowGrad.addColorStop(1, 'rgba(255,100,20,0.15)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(rx - 4, topY - 20, pool.w + 8, 20);
+
+  ctx.restore();
+}
+
+function drawLavaBubble(b) {
+  const bx = b.x - camX;
+  const alpha = b.life > 0.3 ? 1 : b.life / 0.3;
+  ctx.fillStyle = `rgba(255,200,60,${alpha * 0.8})`;
+  ctx.beginPath();
+  ctx.arc(bx, b.y, b.size, 0, 6.28);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,240,150,${alpha * 0.5})`;
+  ctx.beginPath();
+  ctx.arc(bx, b.y - b.size * 0.3, b.size * 0.4, 0, 6.28);
+  ctx.fill();
+}
+
+function drawHeatShimmer(s) {
+  const sx = s.x - camX;
+  const alpha = s.life > 0.5 ? (1 - (s.life - 0.5) / 0.5) * 0.3 : (s.life / 0.5) * 0.3;
+  const wobble = Math.sin(s.life * 12 + s.x) * 3;
+  ctx.fillStyle = `rgba(255,150,50,${alpha})`;
+  ctx.beginPath();
+  ctx.arc(sx + wobble, s.y, s.size, 0, 6.28);
+  ctx.fill();
+}
+
+function drawWaterSplash(sp) {
+  const sx = sp.x - camX;
+  const alpha = sp.life / sp.maxLife;
+  ctx.fillStyle = `rgba(100,180,255,${alpha * 0.7})`;
+  ctx.beginPath();
+  ctx.arc(sx, sp.y, sp.size * (1 - alpha * 0.5), 0, 6.28);
+  ctx.fill();
+  ctx.fillStyle = `rgba(200,230,255,${alpha * 0.4})`;
+  ctx.beginPath();
+  ctx.arc(sx, sp.y, sp.size * 0.4, 0, 6.28);
+  ctx.fill();
+}
+
 function drawMsg(now){
   if(!msgText||msgExpiry<now) return;
   ctx.font='bold 7px monospace';
@@ -2401,6 +2606,11 @@ function draw(now){
 
   drawBG(now);
   PLATFORMS.forEach(p=>drawPlatform(p));
+  WATER_POOLS.forEach(wp => drawWaterPool(wp, now));
+  LAVA_POOLS.forEach(lp => drawLavaPool(lp, now));
+  lavaBubbles.forEach(b => drawLavaBubble(b));
+  heatShimmers.forEach(s => drawHeatShimmer(s));
+  waterSplashes.forEach(sp => drawWaterSplash(sp));
   coins.forEach(c=>drawCoin(c,now));
   PALM_TREES.forEach(pt => drawPalmTree(pt, now));
   dustParticles.forEach(d => drawDustParticle(d));
@@ -2521,45 +2731,639 @@ function drawCharacterPreview(canvas, family) {
   });
 }
 
-function goToCharSelect() {
-  fadeTransition(() => {
-    document.getElementById('title').style.display = 'none';
-    document.getElementById('charselect').style.display = 'flex';
-    buildCharSelect();
-  });
+// ═══════════════════════════════════════════════════
+//  ANIMATED TITLE SCREEN
+// ═══════════════════════════════════════════════════
+let titleCanvas, titleCtx, charSelectCanvas, charSelectCtx;
+let titleAnimId = null;
+let charSelectAnimId = null;
+let menuStars = [];
+let menuParticles = [];
+let floatingChars = [];
+let titlePulse = 0;
+let playBtnHover = false;
+
+const TITLE_W = 640, TITLE_H = 360;
+
+function initTitleScreen() {
+  titleCanvas = document.getElementById('title-canvas');
+  titleCtx = titleCanvas.getContext('2d');
+  titleCanvas.width = TITLE_W;
+  titleCanvas.height = TITLE_H;
+
+  // Create deep starfield (3 layers for parallax)
+  menuStars = [];
+  for (let i = 0; i < 200; i++) {
+    menuStars.push({
+      x: Math.random() * TITLE_W,
+      y: Math.random() * TITLE_H,
+      r: Math.random() * 1.8 + 0.3,
+      speed: Math.random() * 0.3 + 0.05,
+      twinkle: Math.random() * 6.28,
+      layer: Math.floor(Math.random() * 3),
+      bright: Math.random() < 0.1,
+    });
+  }
+
+  // Floating family characters that drift across the screen
+  floatingChars = FAMILY.map((f, i) => ({
+    x: Math.random() * TITLE_W,
+    y: TITLE_H * 0.55 + Math.random() * TITLE_H * 0.3,
+    vx: (Math.random() - 0.5) * 20 + (i % 2 === 0 ? 8 : -8),
+    bobPhase: Math.random() * 6.28,
+    scale: 1.2 + Math.random() * 0.5,
+    data: f,
+    facing: i % 2 === 0 ? 1 : -1,
+    alpha: 0.4 + Math.random() * 0.3,
+  }));
+
+  // Setup click handler for title canvas
+  titleCanvas.addEventListener('click', handleTitleClick);
+  titleCanvas.addEventListener('mousemove', handleTitleMouseMove);
+
+  titleAnimId = requestAnimationFrame(titleLoop);
 }
 
-function buildCharSelect() {
-  const grid = document.getElementById('char-grid');
-  grid.innerHTML = '';
+function getPlayButtonRect() {
+  const bw = 160, bh = 36;
+  const bx = TITLE_W / 2 - bw / 2;
+  const by = TITLE_H * 0.72;
+  return { x: bx, y: by, w: bw, h: bh };
+}
 
-  FAMILY.forEach((fam, idx) => {
-    const card = document.createElement('div');
-    card.className = 'char-card';
-    card.id = 'card-' + fam.name;
+function handleTitleMouseMove(e) {
+  const rect = titleCanvas.getBoundingClientRect();
+  const scaleX = TITLE_W / rect.width;
+  const scaleY = TITLE_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const btn = getPlayButtonRect();
+  playBtnHover = mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h;
+  titleCanvas.style.cursor = playBtnHover ? 'pointer' : 'default';
+}
 
-    const canvas = document.createElement('canvas');
-    canvas.className = 'char-canvas';
-    drawCharacterPreview(canvas, fam);
+function handleTitleClick(e) {
+  const rect = titleCanvas.getBoundingClientRect();
+  const scaleX = TITLE_W / rect.width;
+  const scaleY = TITLE_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const btn = getPlayButtonRect();
+  if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+    goToCharSelect();
+  }
+}
 
-    const name = document.createElement('div');
-    name.className = 'char-name';
-    name.textContent = fam.name;
+function titleLoop(now) {
+  titlePulse = now;
+  const tc = titleCtx;
 
-    card.appendChild(canvas);
-    card.appendChild(name);
+  // === BACKGROUND: Deep space gradient ===
+  const bg = tc.createLinearGradient(0, 0, 0, TITLE_H);
+  bg.addColorStop(0, '#050510');
+  bg.addColorStop(0.4, '#0a0a2a');
+  bg.addColorStop(0.7, '#0f0f35');
+  bg.addColorStop(1, '#1a0a2a');
+  tc.fillStyle = bg;
+  tc.fillRect(0, 0, TITLE_W, TITLE_H);
 
-    card.addEventListener('click', () => {
-      document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      selectedChar = fam;
-    });
-
-    grid.appendChild(card);
+  // === NEBULA GLOW (soft color blobs) ===
+  const nebulaPhase = now * 0.0003;
+  [{x:0.25, y:0.35, c:'80,40,120', r:120}, {x:0.7, y:0.25, c:'40,60,140', r:100}, {x:0.5, y:0.7, c:'120,60,30', r:90}].forEach(n => {
+    const nx = TITLE_W * n.x + Math.sin(nebulaPhase + n.x * 5) * 30;
+    const ny = TITLE_H * n.y + Math.cos(nebulaPhase * 0.7 + n.y * 3) * 20;
+    const pulse = (Math.sin(now * 0.001 + n.x * 10) + 1) / 2;
+    const grad = tc.createRadialGradient(nx, ny, 0, nx, ny, n.r + pulse * 30);
+    grad.addColorStop(0, `rgba(${n.c},${0.06 + pulse * 0.04})`);
+    grad.addColorStop(1, `rgba(${n.c},0)`);
+    tc.fillStyle = grad;
+    tc.fillRect(0, 0, TITLE_W, TITLE_H);
   });
 
+  // === PARALLAX STARFIELD ===
+  menuStars.forEach(s => {
+    const layerSpeed = [0.3, 0.7, 1.2][s.layer];
+    const layerSize = [0.6, 1.0, 1.5][s.layer];
+    s.x -= s.speed * layerSpeed;
+    if (s.x < -5) s.x = TITLE_W + 5;
+
+    const tw = (Math.sin(now * 0.003 + s.twinkle) + 1) / 2;
+    const alpha = 0.2 + tw * 0.6;
+    const sz = s.r * layerSize;
+
+    if (s.bright) {
+      tc.fillStyle = `rgba(255,255,240,${alpha})`;
+      tc.fillRect(s.x - sz * 2, s.y, sz * 4, 1);
+      tc.fillRect(s.x, s.y - sz * 2, 1, sz * 4);
+      tc.fillStyle = `rgba(255,255,200,${alpha * 0.5})`;
+      tc.beginPath(); tc.arc(s.x, s.y, sz * 1.5, 0, 6.28); tc.fill();
+    } else {
+      tc.fillStyle = `rgba(255,255,240,${alpha})`;
+      tc.beginPath(); tc.arc(s.x, s.y, sz, 0, 6.28); tc.fill();
+    }
+  });
+
+  // === SHOOTING STARS (occasional) ===
+  if (Math.random() < 0.003) {
+    menuParticles.push({
+      x: Math.random() * TITLE_W * 0.8 + TITLE_W * 0.1,
+      y: Math.random() * TITLE_H * 0.4,
+      vx: -200 - Math.random() * 150,
+      vy: 80 + Math.random() * 60,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.8,
+      type: 'shooting',
+    });
+  }
+
+  // === AMBIENT FLOATING PARTICLES ===
+  if (Math.random() < 0.08) {
+    const colors = ['255,200,50', '200,150,255', '100,200,255', '255,100,100'];
+    menuParticles.push({
+      x: Math.random() * TITLE_W,
+      y: TITLE_H + 5,
+      vx: (Math.random() - 0.5) * 15,
+      vy: -20 - Math.random() * 30,
+      life: 2 + Math.random() * 2,
+      maxLife: 4,
+      type: 'float',
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: Math.random() * 2 + 1,
+    });
+  }
+
+  // Update & draw particles
+  menuParticles = menuParticles.filter(p => {
+    p.x += p.vx * 0.016;
+    p.y += p.vy * 0.016;
+    p.life -= 0.016;
+    if (p.life <= 0) return false;
+
+    const alpha = Math.min(p.life / (p.maxLife * 0.3), 1);
+    if (p.type === 'shooting') {
+      tc.strokeStyle = `rgba(255,255,200,${alpha * 0.8})`;
+      tc.lineWidth = 1.5;
+      tc.beginPath();
+      tc.moveTo(p.x, p.y);
+      tc.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04);
+      tc.stroke();
+      tc.fillStyle = `rgba(255,255,255,${alpha})`;
+      tc.beginPath(); tc.arc(p.x, p.y, 1.5, 0, 6.28); tc.fill();
+    } else {
+      const wobble = Math.sin(now * 0.005 + p.x * 0.1) * 5;
+      tc.fillStyle = `rgba(${p.color},${alpha * 0.5})`;
+      tc.beginPath(); tc.arc(p.x + wobble, p.y, p.size * 2, 0, 6.28); tc.fill();
+      tc.fillStyle = `rgba(${p.color},${alpha * 0.8})`;
+      tc.beginPath(); tc.arc(p.x + wobble, p.y, p.size, 0, 6.28); tc.fill();
+    }
+    return true;
+  });
+
+  // === FLOATING FAMILY CHARACTERS ===
+  floatingChars.forEach(fc => {
+    fc.x += fc.vx * 0.016;
+    fc.bobPhase += 0.02;
+    if (fc.x > TITLE_W + 40) { fc.x = -30; fc.y = TITLE_H * 0.55 + Math.random() * TITLE_H * 0.3; }
+    if (fc.x < -40) { fc.x = TITLE_W + 30; fc.y = TITLE_H * 0.55 + Math.random() * TITLE_H * 0.3; }
+
+    const bob = Math.sin(fc.bobPhase) * 4;
+    const pw = 22 * fc.scale;
+    const ph = 30 * fc.scale;
+
+    tc.save();
+    tc.globalAlpha = fc.alpha;
+
+    const glow = tc.createRadialGradient(fc.x, fc.y + ph/2 + bob, 0, fc.x, fc.y + ph/2 + bob, pw * 1.5);
+    glow.addColorStop(0, `rgba(245,200,66,0.12)`);
+    glow.addColorStop(1, `rgba(245,200,66,0)`);
+    tc.fillStyle = glow;
+    tc.beginPath(); tc.arc(fc.x, fc.y + ph/2 + bob, pw * 1.5, 0, 6.28); tc.fill();
+
+    tc.save();
+    tc.translate(fc.x - pw/2, fc.y + bob);
+    tc.scale(fc.scale, fc.scale);
+    tc.translate(-(fc.x - pw/2), -(fc.y + bob));
+    drawCharSprite(tc, fc.x - pw/2, fc.y + bob, 22, 30, fc.data, now, {
+      facing: fc.facing, bob: 0, isEnemy: false, invTimer: 0, powerUp: null
+    });
+    tc.restore();
+
+    tc.font = 'bold 8px monospace';
+    tc.textAlign = 'center';
+    tc.fillStyle = `rgba(245,200,66,${fc.alpha})`;
+    tc.fillText(fc.data.name, fc.x, fc.y + ph + bob + 12);
+
+    tc.restore();
+  });
+
+  // === GROUND SILHOUETTE ===
+  tc.fillStyle = '#0a0a12';
+  tc.beginPath();
+  tc.moveTo(0, TITLE_H);
+  for (let gx = 0; gx <= TITLE_W; gx += 8) {
+    const gh = Math.sin(gx * 0.02) * 8 + Math.sin(gx * 0.05 + 1) * 4 + 15;
+    tc.lineTo(gx, TITLE_H - gh);
+  }
+  tc.lineTo(TITLE_W, TITLE_H);
+  tc.closePath();
+  tc.fill();
+
+  // === TITLE TEXT: "DYSFUNCTIONAL FAMILY" ===
+  const titleY = TITLE_H * 0.2;
+  const pulse = (Math.sin(now * 0.003) + 1) / 2;
+  const bigPulse = (Math.sin(now * 0.001) + 1) / 2;
+
+  const titleGlow = tc.createRadialGradient(TITLE_W/2, titleY + 20, 10, TITLE_W/2, titleY + 20, 200);
+  titleGlow.addColorStop(0, `rgba(245,200,66,${0.08 + bigPulse * 0.06})`);
+  titleGlow.addColorStop(1, 'rgba(245,200,66,0)');
+  tc.fillStyle = titleGlow;
+  tc.fillRect(0, 0, TITLE_W, TITLE_H * 0.5);
+
+  tc.textAlign = 'center';
+  tc.textBaseline = 'middle';
+  tc.font = 'bold 42px monospace';
+  tc.fillStyle = '#2a1a00';
+  tc.fillText('DYSFUNCTIONAL', TITLE_W/2 + 3, titleY + 3);
+  tc.fillStyle = '#5a3a00';
+  tc.fillText('DYSFUNCTIONAL', TITLE_W/2 + 2, titleY + 2);
+  const grad1 = tc.createLinearGradient(0, titleY - 20, 0, titleY + 20);
+  grad1.addColorStop(0, '#ffe066');
+  grad1.addColorStop(0.5, '#f5c842');
+  grad1.addColorStop(1, '#cc9900');
+  tc.fillStyle = grad1;
+  tc.fillText('DYSFUNCTIONAL', TITLE_W/2, titleY);
+  tc.fillStyle = `rgba(255,255,200,${0.15 + pulse * 0.1})`;
+  tc.fillText('DYSFUNCTIONAL', TITLE_W/2, titleY - 1);
+
+  const famY = titleY + 50;
+  tc.font = 'bold 52px monospace';
+  tc.fillStyle = '#2a1a00';
+  tc.fillText('FAMILY', TITLE_W/2 + 3, famY + 3);
+  tc.fillStyle = '#5a3a00';
+  tc.fillText('FAMILY', TITLE_W/2 + 2, famY + 2);
+  const grad2 = tc.createLinearGradient(0, famY - 25, 0, famY + 25);
+  grad2.addColorStop(0, '#ffe066');
+  grad2.addColorStop(0.5, '#f5c842');
+  grad2.addColorStop(1, '#cc9900');
+  tc.fillStyle = grad2;
+  tc.fillText('FAMILY', TITLE_W/2, famY);
+  tc.fillStyle = `rgba(255,255,200,${0.15 + pulse * 0.1})`;
+  tc.fillText('FAMILY', TITLE_W/2, famY - 1);
+
+  const lineY = famY + 30;
+  const lineW = 200 + pulse * 30;
+  const lineGrad = tc.createLinearGradient(TITLE_W/2 - lineW/2, 0, TITLE_W/2 + lineW/2, 0);
+  lineGrad.addColorStop(0, 'rgba(245,200,66,0)');
+  lineGrad.addColorStop(0.3, 'rgba(245,200,66,0.6)');
+  lineGrad.addColorStop(0.5, 'rgba(245,200,66,0.9)');
+  lineGrad.addColorStop(0.7, 'rgba(245,200,66,0.6)');
+  lineGrad.addColorStop(1, 'rgba(245,200,66,0)');
+  tc.fillStyle = lineGrad;
+  tc.fillRect(TITLE_W/2 - lineW/2, lineY, lineW, 2);
+
+  tc.font = '10px monospace';
+  tc.fillStyle = `rgba(200,200,200,${0.5 + pulse * 0.3})`;
+  tc.fillText('A side-scrolling adventure! Stomp enemies! Collect coins!', TITLE_W/2, lineY + 18);
+
+  // === PLAY BUTTON ===
+  const btn = getPlayButtonRect();
+  const btnPulse = (Math.sin(now * 0.005) + 1) / 2;
+  const btnScale = playBtnHover ? 1.08 : 1.0;
+
+  tc.save();
+  tc.translate(btn.x + btn.w/2, btn.y + btn.h/2);
+  tc.scale(btnScale, btnScale);
+  tc.translate(-(btn.x + btn.w/2), -(btn.y + btn.h/2));
+
+  const btnGlow = tc.createRadialGradient(btn.x + btn.w/2, btn.y + btn.h/2, 10, btn.x + btn.w/2, btn.y + btn.h/2, 80);
+  btnGlow.addColorStop(0, `rgba(245,200,66,${playBtnHover ? 0.25 : 0.1 + btnPulse * 0.08})`);
+  btnGlow.addColorStop(1, 'rgba(245,200,66,0)');
+  tc.fillStyle = btnGlow;
+  tc.beginPath(); tc.arc(btn.x + btn.w/2, btn.y + btn.h/2, 80, 0, 6.28); tc.fill();
+
+  tc.fillStyle = '#4a2a00';
+  tc.fillRect(btn.x + 3, btn.y + 3, btn.w, btn.h);
+
+  const btnGrad = tc.createLinearGradient(0, btn.y, 0, btn.y + btn.h);
+  btnGrad.addColorStop(0, playBtnHover ? '#ffe866' : '#f5c842');
+  btnGrad.addColorStop(1, playBtnHover ? '#f5d042' : '#cc9900');
+  tc.fillStyle = btnGrad;
+  tc.fillRect(btn.x, btn.y, btn.w, btn.h);
+
+  tc.fillStyle = 'rgba(255,255,255,0.2)';
+  tc.fillRect(btn.x, btn.y, btn.w, btn.h / 3);
+
+  tc.strokeStyle = '#7a4a00';
+  tc.lineWidth = 2;
+  tc.strokeRect(btn.x, btn.y, btn.w, btn.h);
+
+  tc.font = 'bold 16px monospace';
+  tc.textAlign = 'center';
+  tc.textBaseline = 'middle';
+  tc.fillStyle = '#1a0a00';
+  tc.fillText('P L A Y', btn.x + btn.w/2, btn.y + btn.h/2 + 1);
+
+  tc.restore();
+
+  // === VERSION/CREDIT ===
+  tc.font = '8px monospace';
+  tc.textAlign = 'center';
+  tc.fillStyle = 'rgba(150,150,150,0.4)';
+  tc.fillText('v1.0 // ARROW KEYS + SPACE', TITLE_W/2, TITLE_H - 12);
+
+  titleAnimId = requestAnimationFrame(titleLoop);
+}
+
+function stopTitleLoop() {
+  if (titleAnimId) { cancelAnimationFrame(titleAnimId); titleAnimId = null; }
+  if (titleCanvas) {
+    titleCanvas.removeEventListener('click', handleTitleClick);
+    titleCanvas.removeEventListener('mousemove', handleTitleMouseMove);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  ANIMATED CHARACTER SELECT SCREEN
+// ═══════════════════════════════════════════════════
+let csSelectedIdx = 0;
+let csHoverIdx = -1;
+let csSparkles = [];
+let csAnimId = null;
+
+function initCharSelectScreen() {
+  charSelectCanvas = document.getElementById('charselect-canvas');
+  charSelectCtx = charSelectCanvas.getContext('2d');
+  charSelectCanvas.width = TITLE_W;
+  charSelectCanvas.height = TITLE_H;
+
+  csSelectedIdx = 0;
   selectedChar = FAMILY[0];
-  document.getElementById('card-' + FAMILY[0].name).classList.add('selected');
+  csSparkles = [];
+
+  charSelectCanvas.addEventListener('click', handleCharSelectClick);
+  charSelectCanvas.addEventListener('mousemove', handleCharSelectMouseMove);
+
+  csAnimId = requestAnimationFrame(charSelectLoop);
+}
+
+function getCharCardRects() {
+  const cards = [];
+  const cols = 4, rows = 2;
+  const cardW = 70, cardH = 70;
+  const gapX = 16, gapY = 12;
+  const totalW = cols * cardW + (cols - 1) * gapX;
+  const totalH = rows * cardH + (rows - 1) * gapY;
+  const startX = TITLE_W / 2 - totalW / 2;
+  const startY = TITLE_H * 0.22;
+
+  for (let i = 0; i < FAMILY.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    cards.push({
+      x: startX + col * (cardW + gapX),
+      y: startY + row * (cardH + gapY),
+      w: cardW,
+      h: cardH,
+    });
+  }
+  return cards;
+}
+
+function getGoButtonRect() {
+  const bw = 180, bh = 38;
+  return { x: TITLE_W / 2 - bw / 2, y: TITLE_H * 0.78, w: bw, h: bh };
+}
+
+let csGoBtnHover = false;
+
+function handleCharSelectMouseMove(e) {
+  const rect = charSelectCanvas.getBoundingClientRect();
+  const scaleX = TITLE_W / rect.width;
+  const scaleY = TITLE_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+
+  const cards = getCharCardRects();
+  csHoverIdx = -1;
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i];
+    if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) {
+      csHoverIdx = i;
+      break;
+    }
+  }
+
+  const goBtn = getGoButtonRect();
+  csGoBtnHover = mx >= goBtn.x && mx <= goBtn.x + goBtn.w && my >= goBtn.y && my <= goBtn.y + goBtn.h;
+
+  charSelectCanvas.style.cursor = (csHoverIdx >= 0 || csGoBtnHover) ? 'pointer' : 'default';
+}
+
+function handleCharSelectClick(e) {
+  const rect = charSelectCanvas.getBoundingClientRect();
+  const scaleX = TITLE_W / rect.width;
+  const scaleY = TITLE_H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+
+  const cards = getCharCardRects();
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i];
+    if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) {
+      csSelectedIdx = i;
+      selectedChar = FAMILY[i];
+      for (let j = 0; j < 20; j++) {
+        const angle = Math.random() * 6.28;
+        const speed = Math.random() * 80 + 30;
+        csSparkles.push({
+          x: c.x + c.w/2, y: c.y + c.h/2,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          life: 0.5 + Math.random() * 0.3,
+          color: FAMILY[i].color,
+        });
+      }
+      return;
+    }
+  }
+
+  const goBtn = getGoButtonRect();
+  if (mx >= goBtn.x && mx <= goBtn.x + goBtn.w && my >= goBtn.y && my <= goBtn.y + goBtn.h) {
+    startGame();
+  }
+}
+
+function charSelectLoop(now) {
+  const cc = charSelectCtx;
+
+  const bg = cc.createLinearGradient(0, 0, 0, TITLE_H);
+  bg.addColorStop(0, '#050515');
+  bg.addColorStop(0.5, '#0a0a2e');
+  bg.addColorStop(1, '#150a25');
+  cc.fillStyle = bg;
+  cc.fillRect(0, 0, TITLE_W, TITLE_H);
+
+  menuStars.forEach(s => {
+    const tw = (Math.sin(now * 0.003 + s.twinkle) + 1) / 2;
+    cc.fillStyle = `rgba(255,255,240,${0.15 + tw * 0.3})`;
+    cc.beginPath(); cc.arc(s.x, s.y, s.r * 0.7, 0, 6.28); cc.fill();
+  });
+
+  // === TITLE ===
+  cc.textAlign = 'center';
+  cc.textBaseline = 'middle';
+  cc.font = 'bold 26px monospace';
+  const headerPulse = (Math.sin(now * 0.003) + 1) / 2;
+  cc.fillStyle = '#3a2000';
+  cc.fillText('SELECT YOUR FIGHTER', TITLE_W/2 + 2, TITLE_H * 0.08 + 2);
+  const hGrad = cc.createLinearGradient(0, TITLE_H * 0.05, 0, TITLE_H * 0.11);
+  hGrad.addColorStop(0, '#ffe066');
+  hGrad.addColorStop(1, '#cc9900');
+  cc.fillStyle = hGrad;
+  cc.fillText('SELECT YOUR FIGHTER', TITLE_W/2, TITLE_H * 0.08);
+  cc.fillStyle = `rgba(255,255,200,${0.1 + headerPulse * 0.15})`;
+  cc.fillText('SELECT YOUR FIGHTER', TITLE_W/2, TITLE_H * 0.08 - 1);
+
+  const lw = 250 + headerPulse * 20;
+  const lg = cc.createLinearGradient(TITLE_W/2 - lw/2, 0, TITLE_W/2 + lw/2, 0);
+  lg.addColorStop(0, 'rgba(245,200,66,0)');
+  lg.addColorStop(0.5, 'rgba(245,200,66,0.5)');
+  lg.addColorStop(1, 'rgba(245,200,66,0)');
+  cc.fillStyle = lg;
+  cc.fillRect(TITLE_W/2 - lw/2, TITLE_H * 0.13, lw, 1.5);
+
+  // === CHARACTER CARDS ===
+  const cards = getCharCardRects();
+  cards.forEach((card, i) => {
+    const fam = FAMILY[i];
+    const isSelected = i === csSelectedIdx;
+    const isHover = i === csHoverIdx;
+
+    if (isSelected) {
+      const selGlow = cc.createRadialGradient(card.x + card.w/2, card.y + card.h/2, 5, card.x + card.w/2, card.y + card.h/2, card.w);
+      selGlow.addColorStop(0, `rgba(255,220,0,0.15)`);
+      selGlow.addColorStop(1, `rgba(255,220,0,0)`);
+      cc.fillStyle = selGlow;
+      cc.beginPath(); cc.arc(card.x + card.w/2, card.y + card.h/2, card.w, 0, 6.28); cc.fill();
+    }
+
+    cc.fillStyle = isSelected ? 'rgba(255,220,0,0.15)' : isHover ? 'rgba(100,100,150,0.25)' : 'rgba(40,40,60,0.5)';
+    cc.fillRect(card.x, card.y, card.w, card.h);
+
+    cc.strokeStyle = isSelected ? '#ffdd00' : isHover ? '#8888cc' : '#444466';
+    cc.lineWidth = isSelected ? 3 : 1.5;
+    cc.strokeRect(card.x, card.y, card.w, card.h);
+
+    if (isSelected) {
+      const blink = (Math.sin(now * 0.008) + 1) / 2;
+      cc.strokeStyle = `rgba(255,220,0,${0.6 + blink * 0.4})`;
+      cc.lineWidth = 2;
+      const cs = 8;
+      cc.beginPath(); cc.moveTo(card.x-2, card.y+cs); cc.lineTo(card.x-2, card.y-2); cc.lineTo(card.x+cs, card.y-2); cc.stroke();
+      cc.beginPath(); cc.moveTo(card.x+card.w-cs, card.y-2); cc.lineTo(card.x+card.w+2, card.y-2); cc.lineTo(card.x+card.w+2, card.y+cs); cc.stroke();
+      cc.beginPath(); cc.moveTo(card.x-2, card.y+card.h-cs); cc.lineTo(card.x-2, card.y+card.h+2); cc.lineTo(card.x+cs, card.y+card.h+2); cc.stroke();
+      cc.beginPath(); cc.moveTo(card.x+card.w-cs, card.y+card.h+2); cc.lineTo(card.x+card.w+2, card.y+card.h+2); cc.lineTo(card.x+card.w+2, card.y+card.h-cs); cc.stroke();
+    }
+
+    const sprW = 22, sprH = 30;
+    const sprX = card.x + card.w/2 - sprW/2;
+    const sprY = card.y + 8;
+    const bob = Math.sin(now * 0.003 + i * 1.2) * 1.5;
+
+    drawCharSprite(cc, sprX, sprY + bob, sprW, sprH, fam, now, {
+      facing: 1, bob: 0, isEnemy: false, invTimer: 0, powerUp: null
+    });
+
+    cc.font = 'bold 8px monospace';
+    cc.textAlign = 'center';
+    cc.textBaseline = 'top';
+    cc.fillStyle = isSelected ? '#ffdd00' : '#aaaacc';
+    cc.fillText(fam.name, card.x + card.w/2, card.y + card.h - 16);
+
+    cc.font = '6px monospace';
+    cc.fillStyle = isSelected ? 'rgba(255,220,0,0.6)' : 'rgba(150,150,180,0.5)';
+    cc.fillText(fam.cls.toUpperCase(), card.x + card.w/2, card.y + card.h - 6);
+  });
+
+  csSparkles = csSparkles.filter(s => {
+    s.x += s.vx * 0.016;
+    s.y += s.vy * 0.016;
+    s.vy += 120 * 0.016;
+    s.life -= 0.016;
+    if (s.life <= 0) return false;
+    const alpha = s.life * 2;
+    cc.fillStyle = s.color;
+    cc.globalAlpha = Math.min(alpha, 1);
+    cc.beginPath(); cc.arc(s.x, s.y, 2, 0, 6.28); cc.fill();
+    cc.fillStyle = '#fff';
+    cc.globalAlpha = Math.min(alpha, 1) * 0.5;
+    cc.beginPath(); cc.arc(s.x, s.y, 0.8, 0, 6.28); cc.fill();
+    cc.globalAlpha = 1;
+    return true;
+  });
+
+  // === GO BUTTON ===
+  const goBtn = getGoButtonRect();
+  const goPulse = (Math.sin(now * 0.005) + 1) / 2;
+  const goScale = csGoBtnHover ? 1.06 : 1.0;
+
+  cc.save();
+  cc.translate(goBtn.x + goBtn.w/2, goBtn.y + goBtn.h/2);
+  cc.scale(goScale, goScale);
+  cc.translate(-(goBtn.x + goBtn.w/2), -(goBtn.y + goBtn.h/2));
+
+  const goGlow = cc.createRadialGradient(goBtn.x + goBtn.w/2, goBtn.y + goBtn.h/2, 10, goBtn.x + goBtn.w/2, goBtn.y + goBtn.h/2, 100);
+  goGlow.addColorStop(0, `rgba(245,200,66,${csGoBtnHover ? 0.2 : 0.06 + goPulse * 0.06})`);
+  goGlow.addColorStop(1, 'rgba(245,200,66,0)');
+  cc.fillStyle = goGlow;
+  cc.beginPath(); cc.arc(goBtn.x + goBtn.w/2, goBtn.y + goBtn.h/2, 100, 0, 6.28); cc.fill();
+
+  cc.fillStyle = '#4a2a00';
+  cc.fillRect(goBtn.x + 3, goBtn.y + 3, goBtn.w, goBtn.h);
+
+  const goBtnGrad = cc.createLinearGradient(0, goBtn.y, 0, goBtn.y + goBtn.h);
+  goBtnGrad.addColorStop(0, csGoBtnHover ? '#ffe866' : '#f5c842');
+  goBtnGrad.addColorStop(1, csGoBtnHover ? '#f5d042' : '#cc9900');
+  cc.fillStyle = goBtnGrad;
+  cc.fillRect(goBtn.x, goBtn.y, goBtn.w, goBtn.h);
+
+  cc.fillStyle = 'rgba(255,255,255,0.2)';
+  cc.fillRect(goBtn.x, goBtn.y, goBtn.w, goBtn.h / 3);
+
+  cc.strokeStyle = '#7a4a00';
+  cc.lineWidth = 2;
+  cc.strokeRect(goBtn.x, goBtn.y, goBtn.w, goBtn.h);
+
+  cc.font = 'bold 16px monospace';
+  cc.textAlign = 'center';
+  cc.textBaseline = 'middle';
+  cc.fillStyle = '#1a0a00';
+  cc.fillText("L E T ' S   G O !", goBtn.x + goBtn.w/2, goBtn.y + goBtn.h/2 + 1);
+
+  cc.restore();
+
+  cc.font = '7px monospace';
+  cc.textAlign = 'center';
+  cc.fillStyle = 'rgba(150,150,150,0.35)';
+  cc.fillText('CLICK A CHARACTER TO SELECT // THEN HIT GO', TITLE_W/2, TITLE_H - 10);
+
+  csAnimId = requestAnimationFrame(charSelectLoop);
+}
+
+function stopCharSelectLoop() {
+  if (csAnimId) { cancelAnimationFrame(csAnimId); csAnimId = null; }
+  if (charSelectCanvas) {
+    charSelectCanvas.removeEventListener('click', handleCharSelectClick);
+    charSelectCanvas.removeEventListener('mousemove', handleCharSelectMouseMove);
+  }
+}
+
+function goToCharSelect() {
+  fadeTransition(() => {
+    stopTitleLoop();
+    document.getElementById('title').style.display = 'none';
+    document.getElementById('charselect').style.display = 'flex';
+    initCharSelectScreen();
+  });
 }
 
 // ═══════════════════════════════════════════════════
@@ -2572,6 +3376,7 @@ function startGame(){
   }
 
   fadeTransition(() => {
+    stopCharSelectLoop();
     document.getElementById('charselect').style.display='none';
     document.getElementById('hud').style.display='flex';
     document.getElementById('game-wrap').style.display='flex';
@@ -2600,6 +3405,7 @@ function startGame(){
       setTimeout(()=>{
         document.getElementById('loading').style.display='none';
         document.getElementById('title').style.display='flex';
+        initTitleScreen();
         setupControls();
       },300);
     }
