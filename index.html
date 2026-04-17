@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Dysfunctional Architecture</title>
+<title>Performance Review</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html,body { width:100%; height:100%; background:#0a0a1a; overflow:hidden; font-family:monospace; }
@@ -92,7 +92,7 @@ cursor:pointer; letter-spacing:2px; box-shadow:4px 4px 0 #7a4a00;
 
 <div id="hud">
   <span id="hud-hp" style="display:none;">❤❤❤</span>
-  <span>DYSFUNCTIONAL ARCHITECTURE</span>
+  <span>PERFORMANCE REVIEW</span>
   <span id="hud-coins">COINS: 0</span>
 </div>
 
@@ -6114,7 +6114,7 @@ function titleLoop(now) {
   tc.closePath();
   tc.fill();
 
-  // === TITLE TEXT: "DYSFUNCTIONAL FAMILY" (painterly style) ===
+  // === TITLE TEXT: "PERFORMANCE REVIEW" (painterly style) ===
   const titleY = TITLE_H * 0.2;
   const pulse = (Math.sin(now * 0.003) + 1) / 2;
   const bigPulse = (Math.sin(now * 0.001) + 1) / 2;
@@ -6133,9 +6133,9 @@ function titleLoop(now) {
 
   // Multi-layer text with soft shadows for painterly depth
   tc.fillStyle = 'rgba(0,0,0,0.3)';
-  tc.fillText('DYSFUNCTIONAL', TITLE_W/2 + 4, titleY + 4);
+  tc.fillText('PERFORMANCE', TITLE_W/2 + 4, titleY + 4);
   tc.fillStyle = 'rgba(0,0,0,0.5)';
-  tc.fillText('DYSFUNCTIONAL', TITLE_W/2 + 2, titleY + 2);
+  tc.fillText('PERFORMANCE', TITLE_W/2 + 2, titleY + 2);
 
   // Rich golden gradient with multiple stops
   const grad1 = tc.createLinearGradient(0, titleY - 25, 0, titleY + 25);
@@ -6145,19 +6145,19 @@ function titleLoop(now) {
   grad1.addColorStop(0.7, '#e8a832');
   grad1.addColorStop(1, '#cc8800');
   tc.fillStyle = grad1;
-  tc.fillText('DYSFUNCTIONAL', TITLE_W/2, titleY);
+  tc.fillText('PERFORMANCE', TITLE_W/2, titleY);
 
   // Soft highlight layer
   tc.fillStyle = `rgba(255,255,220,${0.2 + pulse * 0.12})`;
-  tc.fillText('DYSFUNCTIONAL', TITLE_W/2, titleY - 1);
+  tc.fillText('PERFORMANCE', TITLE_W/2, titleY - 1);
 
   const famY = titleY + 60;
   tc.font = 'bold 58px monospace';
 
   tc.fillStyle = 'rgba(0,0,0,0.3)';
-  tc.fillText('ARCHITECTURE', TITLE_W/2 + 4, famY + 4);
+  tc.fillText('REVIEW', TITLE_W/2 + 4, famY + 4);
   tc.fillStyle = 'rgba(0,0,0,0.5)';
-  tc.fillText('ARCHITECTURE', TITLE_W/2 + 2, famY + 2);
+  tc.fillText('REVIEW', TITLE_W/2 + 2, famY + 2);
 
   const grad2 = tc.createLinearGradient(0, famY - 30, 0, famY + 30);
   grad2.addColorStop(0, '#ffee99');
@@ -6166,10 +6166,10 @@ function titleLoop(now) {
   grad2.addColorStop(0.7, '#e8a832');
   grad2.addColorStop(1, '#cc8800');
   tc.fillStyle = grad2;
-  tc.fillText('ARCHITECTURE', TITLE_W/2, famY);
+  tc.fillText('REVIEW', TITLE_W/2, famY);
 
   tc.fillStyle = `rgba(255,255,220,${0.2 + pulse * 0.12})`;
-  tc.fillText('ARCHITECTURE', TITLE_W/2, famY - 1);
+  tc.fillText('REVIEW', TITLE_W/2, famY - 1);
 
   const lineY = famY + 35;
   const lineW = 240 + pulse * 40;
