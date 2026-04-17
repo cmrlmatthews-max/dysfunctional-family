@@ -1393,7 +1393,7 @@ function update(dt, now){
     // Check if player entered boss arena (x > 2900)
     if (!boss.active && player.x > 2900) {
       boss.active = true;
-      showMsg('CHARLA AWAKENS!', 2000);
+      showMsg('THE BOSS AWAKENS!', 2000);
       if (!boss.roarPlayed) {
         sfxBossRoar();
         screenShake.intensity = 8;
@@ -1553,7 +1553,7 @@ function update(dt, now){
             boss.defeated = true;
             bossDefeated = true;
             score += 2000;
-            showMsg('CHARLA DEFEATED!', 2500);
+            showMsg('BOSS DEFEATED!', 2500);
             sfxWin();
 
             // Big explosion
@@ -2270,7 +2270,7 @@ function update(dt, now){
   // Boss intro
   if (!tutorials.bossIntro && player.x > 2850) {
     tutorials.bossIntro = true;
-    showMsg("BOSS FIGHT! STOMP CHARLA'S HEAD!\nWATCH FOR TELEGRAPHED ATTACKS!", 3500);
+    showMsg("BOSS FIGHT! STOMP THE BOSS'S HEAD!\nWATCH FOR TELEGRAPHED ATTACKS!", 3500);
   }
 
   // Particle updates (visual only, runs once per frame)
